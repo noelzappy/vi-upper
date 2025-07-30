@@ -173,16 +173,6 @@ print(f"Merged video URL: {result['merged_video_url']}")
 
 ## Development
 
-### Running Tests
-
-```bash
-# Install test dependencies
-pip install pytest pytest-asyncio httpx
-
-# Run tests
-pytest
-```
-
 ### Development Server
 
 ```bash
