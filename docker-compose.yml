@@ -1,8 +1,12 @@
 services:
-  video-merger-api:
+  vi-upper:
     build: .
+    container_name: vi-upper
     restart: unless-stopped
+    ports:
+      - "8000:8000"
     environment:
+      - PYTHONUNBUFFERED=1
       - MINIO_ENDPOINT=${MINIO_ENDPOINT}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
@@ -14,14 +18,22 @@ services:
     volumes:
       - ./temp:/app/temp
     labels:
-      - 'traefik.enable=true'
-      - 'traefik.http.routers.video-merger-api.rule=Host(`${API_HOST}`)'
-      - 'traefik.http.routers.video-merger-api.entrypoints=web,websecure'
-      - 'traefik.http.routers.video-merger-api.tls.certresolver=mytlschallenge'
-      - 'traefik.http.services.video-merger-api.loadbalancer.server.port=8000'
+      - traefik.enable=true
+      - traefik.http.routers.vi-upper.rule=Host(`${API_DOMAIN}`)
+      - traefik.http.routers.vi-upper.entrypoints=websecure
+      - traefik.http.routers.vi-upper.tls.certresolver=myresolver
+      - traefik.http.routers.vi-upper.middlewares=vi-upper-headers@docker
+      - traefik.http.middlewares.vi-upper-headers.headers.SSLRedirect=true
+      - traefik.http.middlewares.vi-upper-headers.headers.STSSeconds=315360000
+      - traefik.http.middlewares.vi-upper-headers.headers.browserXSSFilter=true
+      - traefik.http.middlewares.vi-upper-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.vi-upper-headers.headers.forceSTSHeader=true
+      - traefik.http.middlewares.vi-upper-headers.headers.SSLHost=${DOMAIN_NAME}
+      - traefik.http.middlewares.vi-upper-headers.headers.STSIncludeSubdomains=true
+      - traefik.http.middlewares.vi-upper-headers.headers.STSPreload=true
     networks:
-      - traefik
+      - web
 
 networks:
-  traefik:
+  web:
     external: true
