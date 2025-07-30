@@ -135,8 +135,6 @@ async def merge_videos(request: VideoMergeRequest):
             except Exception as e:
                 logger.warning(f"Failed to remove temporary file {file}: {str(e)}")
 
-        # Clean up temporary directory
-        os.remove(temp_dir)
 
         # Calculate processing time
         end_time = datetime.utcnow()
