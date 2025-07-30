@@ -20,7 +20,6 @@ services:
       - 'traefik.http.routers.video-merger-api.entrypoints=websecure'
       - 'traefik.http.routers.video-merger-api.tls=true'
       - 'traefik.http.routers.video-merger-api.tls.certresolver=mytlschallenge'  # Match your Traefik config
-      - 'traefik.http.services.video-merger-api.loadbalancer.server.port=8000'
     networks:
       - traefik
 
