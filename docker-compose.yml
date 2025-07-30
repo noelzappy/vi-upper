@@ -1,6 +1,7 @@
 services:
   video-merger-api:
     build: .
+    restart: unless-stopped
     environment:
       - MINIO_ENDPOINT=${MINIO_ENDPOINT}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
@@ -15,9 +16,9 @@ services:
     labels:
       - 'traefik.enable=true'
       - 'traefik.http.routers.video-merger-api.rule=Host(`${API_HOST}`)'
-      - 'traefik.http.routers.video-merger-api.entrypoints=websecure'
+      - 'traefik.http.routers.video-merger-api.entrypoints=web,websecure'
       - 'traefik.http.routers.video-merger-api.tls=true'
-      - 'traefik.http.routers.video-merger-api.tls.certresolver=mytlschallenge'  # Match your Traefik config
+      - 'traefik.http.routers.video-merger-api.tls.certresolver=mytlschallenge'
       - 'traefik.http.services.video-merger-api.loadbalancer.server.port=8000'
     networks:
       - traefik
@@ -25,6 +26,3 @@ services:
 networks:
   traefik:
     external: true
-
-volumes:
-  temp:
