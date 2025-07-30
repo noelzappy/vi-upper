@@ -1,16 +1,18 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel, HttpUrl
-from typing import List
+from typing import List, Optional
 import os
 import tempfile
 import shutil
 import uuid
 import logging
+import aiohttp
 from datetime import datetime
 from dotenv import load_dotenv
 
 from video_merger import VideoMerger
 from s3_client import S3Client
+from youtube_uploader import YouTubeUploader
 
 # Load environment variables
 load_dotenv()
@@ -41,10 +43,29 @@ class VideoMergeResponse(BaseModel):
     processing_time_seconds: float
 
 
+class YouTubeUploadRequest(BaseModel):
+    video_url: HttpUrl
+    title: str
+    description: str
+    tags: List[str]
+    categoryId: str = "22"  # Default: People & Blogs
+    privacyStatus: str = "public"  # public | unlisted | private
+    callback_url: str | None = None
+
+
+class YouTubeUploadResponse(BaseModel):
+    success: bool
+    video_id: str | None = None
+    video_url: str | None = None
+    status: str
+    message: str
+    error: str | None = None
+
+
 # Initialize clients
 s3_client = S3Client()
-
 video_merger = VideoMerger()
+youtube_uploader = YouTubeUploader()
 
 
 @app.get("/")
@@ -135,7 +156,6 @@ async def merge_videos(request: VideoMergeRequest):
             except Exception as e:
                 logger.warning(f"Failed to remove temporary file {file}: {str(e)}")
 
-
         # Calculate processing time
         end_time = datetime.utcnow()
         processing_time = (end_time - start_time).total_seconds()
@@ -164,6 +184,126 @@ async def merge_videos(request: VideoMergeRequest):
                 logger.warning(
                     f"Failed to clean up temporary directory {temp_dir}: {str(e)}"
                 )
+
+
+@app.post("/upload/youtube", response_model=YouTubeUploadResponse)
+async def upload_to_youtube(request: YouTubeUploadRequest):
+    """
+    Download video from URL and upload to YouTube.
+
+    Args:
+        request: YouTubeUploadRequest containing video URL and metadata
+
+    Returns:
+        YouTubeUploadResponse with upload result
+    """
+    start_time = datetime.utcnow()
+
+    try:
+        logger.info(f"Starting YouTube upload for video: {request.title}")
+        logger.info(f"Video URL: {request.video_url}")
+
+        # Validate privacy status
+        valid_privacy_statuses = ["public", "unlisted", "private"]
+        if request.privacyStatus not in valid_privacy_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid privacy status. Must be one of: {valid_privacy_statuses}",
+            )
+
+        # Validate title length (YouTube limit is 100 characters)
+        if len(request.title) > 100:
+            raise HTTPException(
+                status_code=400, detail="Title must be 100 characters or less"
+            )
+
+        # Validate description length (YouTube limit is 5000 characters)
+        if len(request.description) > 5000:
+            raise HTTPException(
+                status_code=400, detail="Description must be 5000 characters or less"
+            )
+
+        # Validate tags (YouTube allows up to 500 characters total)
+        total_tags_length = sum(len(tag) for tag in request.tags)
+        if total_tags_length > 500:
+            raise HTTPException(
+                status_code=400,
+                detail="Total length of all tags must be 500 characters or less",
+            )
+
+        # Upload video to YouTube
+        result = await youtube_uploader.upload_video_from_url(
+            video_url=str(request.video_url),
+            title=request.title,
+            description=request.description,
+            tags=request.tags,
+            category_id=request.categoryId,
+            privacy_status=request.privacyStatus,
+        )
+
+        # Calculate processing time
+        end_time = datetime.utcnow()
+        processing_time = (end_time - start_time).total_seconds()
+
+        logger.info(
+            f"YouTube upload process completed in {processing_time:.2f} seconds"
+        )
+
+        # Send callback if provided
+        if request.callback_url and result.get("success"):
+            try:
+                callback_data = {
+                    "video_id": result.get("video_id"),
+                    "video_url": result.get("video_url"),
+                    "status": result.get("status"),
+                    "processing_time_seconds": processing_time,
+                    "title": request.title,
+                }
+
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        request.callback_url,
+                        json=callback_data,
+                        timeout=aiohttp.ClientTimeout(total=30),
+                    ) as response:
+                        if response.status == 200:
+                            logger.info(
+                                f"Callback sent successfully to {request.callback_url}"
+                            )
+                        else:
+                            logger.warning(
+                                f"Callback failed with status {response.status}"
+                            )
+            except Exception as e:
+                logger.warning(f"Failed to send callback: {str(e)}")
+
+        # Return response
+        if result.get("success"):
+            return YouTubeUploadResponse(
+                success=True,
+                video_id=result.get("video_id"),
+                video_url=result.get("video_url"),
+                status=result.get("status", "uploaded"),
+                message=result.get("message", "Video uploaded successfully to YouTube"),
+            )
+        else:
+            return YouTubeUploadResponse(
+                success=False,
+                status="failed",
+                message=result.get("message", "Failed to upload video to YouTube"),
+                error=result.get("error"),
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during YouTube upload: {str(e)}")
+        return YouTubeUploadResponse(
+            success=False,
+            status="error",
+            message=f"Internal server error: {str(e)}",
+            error="internal_error",
+        )
 
 
 if __name__ == "__main__":

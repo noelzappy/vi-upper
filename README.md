@@ -1,17 +1,19 @@
 # Video Merger API
 
-A FastAPI application for merging videos stored in MinIO S3 buckets.
+A FastAPI application for merging videos stored in MinIO S3 buckets and uploading videos to YouTube.
 
 ## Features
 
 - Download videos from MinIO S3 buckets via URLs
 - Merge multiple MP4 videos into a single video file
 - Upload the merged video to a target S3 bucket
+- **NEW**: Upload videos directly to YouTube via YouTube Data API v3
 - Support for both MinIO and AWS S3
 - Automatic cleanup of temporary files
 - Comprehensive logging
 - Request validation with Pydantic
 - Health check endpoint
+- Optional callback URLs for async processing
 
 ## Requirements
 
@@ -60,10 +62,22 @@ MINIO_SECURE=false
 SOURCE_BUCKET=source-videos
 TARGET_BUCKET=merged-videos
 
+# YouTube API Configuration
+YOUTUBE_CLIENT_SECRETS_FILE=client_secrets.json
+YOUTUBE_TOKEN_FILE=token.json
+
 # Application Configuration
 TEMP_DIR=./temp
 LOG_LEVEL=INFO
 ```
+
+7. Set up YouTube Data API v3 (for YouTube upload feature):
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project or select existing one
+   - Enable YouTube Data API v3
+   - Create OAuth 2.0 Client ID credentials
+   - Download the credentials as `client_secrets.json` in project root
+   - The first API call will prompt for OAuth authorization
 
 ## Configuration
 
@@ -126,6 +140,35 @@ Merge multiple videos from URLs into a single MP4 file.
 }
 ```
 
+#### POST /upload/youtube
+
+Upload a video from MinIO to YouTube.
+
+**Request Body:**
+```json
+{
+  "video_url": "http://localhost:9000/source-videos/my-video.mp4",
+  "title": "My YouTube Video Title",
+  "description": "A brief description of the video",
+  "tags": ["tag1", "tag2", "tag3"],
+  "categoryId": "22",
+  "privacyStatus": "public",
+  "callback_url": "https://my-webhook.com/youtube-callback"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "video_id": "dQw4w9WgXcQ",
+  "video_url": "https://youtube.com/watch?v=dQw4w9WgXcQ",
+  "status": "uploaded",
+  "message": "Video uploaded successfully to YouTube",
+  "error": null
+}
+```
+
 #### GET /health
 
 Health check endpoint.
@@ -140,6 +183,7 @@ Health check endpoint.
 
 ### Example Usage with curl
 
+**Video Merge:**
 ```bash
 curl -X POST "http://localhost:8000/merge-videos" \
   -H "Content-Type: application/json" \
@@ -152,8 +196,22 @@ curl -X POST "http://localhost:8000/merge-videos" \
   }'
 ```
 
+**YouTube Upload:**
+```bash
+curl -X POST "http://localhost:8000/upload/youtube" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "video_url": "http://localhost:9000/source-videos/my-video.mp4",
+    "title": "My YouTube Video",
+    "description": "Uploaded via API",
+    "tags": ["api", "automation"],
+    "privacyStatus": "unlisted"
+  }'
+```
+
 ### Example Usage with Python
 
+**Video Merge:**
 ```python
 import requests
 
@@ -170,6 +228,32 @@ response = requests.post(url, json=payload)
 result = response.json()
 print(f"Merged video URL: {result['merged_video_url']}")
 ```
+
+**YouTube Upload:**
+```python
+import requests
+
+url = "http://localhost:8000/upload/youtube"
+payload = {
+    "video_url": "http://localhost:9000/source-videos/my-video.mp4",
+    "title": "My YouTube Video",
+    "description": "Uploaded via API",
+    "tags": ["api", "automation"],
+    "privacyStatus": "unlisted"
+}
+
+response = requests.post(url, json=payload)
+result = response.json()
+if result['success']:
+    print(f"YouTube URL: {result['video_url']}")
+```
+
+### Example Clients
+
+The project includes example client scripts:
+
+- `python example_client.py` - Interactive demo for video merging
+- `python youtube_example_client.py` - Interactive demo for YouTube uploads
 
 ## Development
 

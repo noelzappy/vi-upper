@@ -80,3 +80,5 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+client_secrets.json
