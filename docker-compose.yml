@@ -1,8 +1,6 @@
 services:
   video-merger-api:
     build: .
-    ports:
-      - "127.0.0.1:8000:8000"  # Optional: for direct access
     environment:
       - MINIO_ENDPOINT=${MINIO_ENDPOINT}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
@@ -20,6 +18,7 @@ services:
       - 'traefik.http.routers.video-merger-api.entrypoints=websecure'
       - 'traefik.http.routers.video-merger-api.tls=true'
       - 'traefik.http.routers.video-merger-api.tls.certresolver=mytlschallenge'  # Match your Traefik config
+      - 'traefik.http.services.video-merger-api.loadbalancer.server.port=8000'
     networks:
       - traefik
 
