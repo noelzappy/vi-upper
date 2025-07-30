@@ -13,8 +13,12 @@ services:
       - TARGET_BUCKET=${TARGET_BUCKET}
       - TEMP_DIR=/app/temp
       - LOG_LEVEL=INFO
+      - YOUTUBE_CLIENT_SECRETS_FILE=/app/client_secrets.json
+      - YOUTUBE_TOKEN_FILE=/app/token.json
     volumes:
       - ./temp:/app/temp
+      - ./client_secrets.json:/app/client_secrets.json:ro
+      - ./token.json:/app/token.json
     labels:
       - traefik.enable=true
       - traefik.http.routers.viupper.rule=Host(`${SUBDOMAIN}.${DOMAIN_NAME}`)

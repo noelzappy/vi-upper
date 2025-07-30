@@ -58,7 +58,10 @@ class YouTubeUploader:
                 flow = InstalledAppFlow.from_client_secrets_file(
                     self.credentials_file, self.scopes
                 )
-                credentials = flow.run_local_server(port=0)
+
+                credentials = flow.run_local_server(
+                    port=0,
+                )
                 logger.info("Obtained new YouTube API credentials")
 
             # Save credentials
