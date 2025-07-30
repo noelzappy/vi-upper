@@ -1,7 +1,7 @@
 services:
-  vi-upper:
+  viupper:
     build: .
-    container_name: vi-upper
+    container_name: viupper
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -19,18 +19,18 @@ services:
       - ./temp:/app/temp
     labels:
       - traefik.enable=true
-      - traefik.http.routers.vi-upper.rule=Host(`${API_DOMAIN}`)
-      - traefik.http.routers.vi-upper.entrypoints=websecure
-      - traefik.http.routers.vi-upper.tls.certresolver=myresolver
-      - traefik.http.routers.vi-upper.middlewares=vi-upper-headers@docker
-      - traefik.http.middlewares.vi-upper-headers.headers.SSLRedirect=true
-      - traefik.http.middlewares.vi-upper-headers.headers.STSSeconds=315360000
-      - traefik.http.middlewares.vi-upper-headers.headers.browserXSSFilter=true
-      - traefik.http.middlewares.vi-upper-headers.headers.contentTypeNosniff=true
-      - traefik.http.middlewares.vi-upper-headers.headers.forceSTSHeader=true
-      - traefik.http.middlewares.vi-upper-headers.headers.SSLHost=${DOMAIN_NAME}
-      - traefik.http.middlewares.vi-upper-headers.headers.STSIncludeSubdomains=true
-      - traefik.http.middlewares.vi-upper-headers.headers.STSPreload=true
+      - traefik.http.routers.viupper.rule=Host(`${SUBDOMAIN}.${DOMAIN_NAME}`)
+      - traefik.http.routers.viupper.entrypoints=websecure
+      - traefik.http.routers.viupper.tls.certresolver=myresolver
+      - traefik.http.routers.viupper.middlewares=viupper-headers@docker
+      - traefik.http.middlewares.viupper-headers.headers.SSLRedirect=true
+      - traefik.http.middlewares.viupper-headers.headers.STSSeconds=315360000
+      - traefik.http.middlewares.viupper-headers.headers.browserXSSFilter=true
+      - traefik.http.middlewares.viupper-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.viupper-headers.headers.forceSTSHeader=true
+      - traefik.http.middlewares.viupper-headers.headers.SSLHost=${DOMAIN_NAME}
+      - traefik.http.middlewares.viupper-headers.headers.STSIncludeSubdomains=true
+      - traefik.http.middlewares.viupper-headers.headers.STSPreload=true
     networks:
       - web
 
