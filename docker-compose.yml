@@ -17,7 +17,6 @@ services:
       - 'traefik.enable=true'
       - 'traefik.http.routers.video-merger-api.rule=Host(`${API_HOST}`)'
       - 'traefik.http.routers.video-merger-api.entrypoints=web,websecure'
-      - 'traefik.http.routers.video-merger-api.tls=true'
       - 'traefik.http.routers.video-merger-api.tls.certresolver=mytlschallenge'
       - 'traefik.http.services.video-merger-api.loadbalancer.server.port=8000'
     networks:
