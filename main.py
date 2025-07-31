@@ -1,12 +1,15 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Header
 from pydantic import BaseModel, HttpUrl
-from typing import List, Optional
+from typing import List, Annotated
 import os
 import tempfile
 import shutil
 import uuid
 import logging
 import aiohttp
+import secrets
+import base64
+import hashlib
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -30,6 +33,52 @@ app = FastAPI(
     description="API for merging videos from MinIO S3 buckets",
     version="1.0.0",
 )
+
+
+# API Key Authentication Functions
+def generate_api_key() -> str:
+    """Generate a secure API key using base64 encoding."""
+    # Generate 32 random bytes and encode as base64
+    random_bytes = secrets.token_bytes(32)
+    api_key = base64.b64encode(random_bytes).decode("utf-8")
+    return api_key
+
+
+def get_api_key_hash() -> str:
+    """Get the expected API key hash from environment."""
+    api_key = os.getenv("API_KEY")
+    if not api_key:
+        # Generate a new API key if none exists
+        new_key = generate_api_key()
+        logger.warning(f"No API_KEY found in environment. Generated new key: {new_key}")
+        logger.warning(
+            "Please set API_KEY environment variable with this key for production use."
+        )
+        return hashlib.sha256(new_key.encode()).hexdigest()
+
+    return hashlib.sha256(api_key.encode()).hexdigest()
+
+
+def verify_api_key(x_api_key: Annotated[str, Header()]) -> bool:
+    """Verify the provided API key against the expected hash."""
+    if not x_api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="API key is required. Provide it in the 'X-API-Key' header.",
+        )
+
+    # Hash the provided key and compare
+    provided_hash = hashlib.sha256(x_api_key.encode()).hexdigest()
+    expected_hash = get_api_key_hash()
+
+    if provided_hash != expected_hash:
+        raise HTTPException(status_code=401, detail="Invalid API key.")
+
+    return True
+
+
+# Get the expected API key hash at startup
+expected_api_key_hash = get_api_key_hash()
 
 
 class VideoMergeRequest(BaseModel):
@@ -78,8 +127,30 @@ async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
 
 
+# @app.post("/generate-api-key")
+# async def generate_new_api_key():
+#     """
+#     Generate a new API key. This endpoint is unprotected for initial setup.
+#     In production, you should remove this endpoint or protect it with admin credentials.
+#     """
+#     new_key = generate_api_key()
+#     key_hash = hashlib.sha256(new_key.encode()).hexdigest()
+
+#     return {
+#         "api_key": new_key,
+#         "key_hash": key_hash,
+#         "instructions": {
+#             "setup": "Set the API_KEY environment variable to this key value",
+#             "usage": "Include this key in the 'X-API-Key' header for all requests",
+#             "security": "Store this key securely and do not share it",
+#         },
+#     }
+
+
 @app.post("/merge-videos", response_model=VideoMergeResponse)
-async def merge_videos(request: VideoMergeRequest):
+async def merge_videos(
+    request: VideoMergeRequest, api_key_valid: bool = Depends(verify_api_key)
+):
     """
     Merge multiple videos from URLs into a single MP4 file.
 
@@ -187,7 +258,9 @@ async def merge_videos(request: VideoMergeRequest):
 
 
 @app.post("/upload/youtube", response_model=YouTubeUploadResponse)
-async def upload_to_youtube(request: YouTubeUploadRequest):
+async def upload_to_youtube(
+    request: YouTubeUploadRequest, api_key_valid: bool = Depends(verify_api_key)
+):
     """
     Download video from URL and upload to YouTube.
 

@@ -14,6 +14,54 @@ A FastAPI application for merging videos stored in MinIO S3 buckets and uploadin
 - Request validation with Pydantic
 - Health check endpoint
 - Optional callback URLs for async processing
+- **Secure API Key Authentication**
+
+## Security
+
+### API Key Authentication
+
+This API uses API key authentication to secure all endpoints (except health check). All requests must include a valid API key in the `X-API-Key` header.
+
+#### Generate API Key
+
+1. **Using the generator script:**
+```bash
+python generate_api_key.py
+```
+
+2. **Using the API endpoint (one-time setup):**
+```bash
+curl -X POST http://localhost:8000/generate-api-key
+```
+
+3. **Set the API key as environment variable:**
+```bash
+export API_KEY="your-generated-key-here"
+```
+
+4. **Or add to .env file:**
+```env
+API_KEY=your-generated-key-here
+```
+
+#### Using the API Key
+
+Include the API key in all requests:
+
+```bash
+curl -X POST http://localhost:8000/merge-videos \
+     -H "Content-Type: application/json" \
+     -H "X-API-Key: your-generated-key-here" \
+     -d '{"video_urls": ["http://..."], "output_filename": "merged.mp4"}'
+```
+
+#### Security Best Practices
+
+- Store API keys securely (environment variables, key management systems)
+- Do not commit API keys to version control
+- Regenerate API keys periodically
+- Use HTTPS in production
+- Consider implementing rate limiting for additional security
 
 ## Requirements
 
@@ -52,7 +100,7 @@ cp .env.example .env
 
 6. Edit `.env` file with your MinIO/S3 configuration:
 ```env
-# MinIO Configuration
+# MinIO/S3 Configuration
 MINIO_ENDPOINT=localhost:9000
 MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
@@ -62,13 +110,26 @@ MINIO_SECURE=false
 SOURCE_BUCKET=source-videos
 TARGET_BUCKET=merged-videos
 
-# YouTube API Configuration
-YOUTUBE_CLIENT_SECRETS_FILE=client_secrets.json
-YOUTUBE_TOKEN_FILE=token.json
+# Domain Configuration (optional)
+SUBDOMAIN=your-subdomain
+DOMAIN_NAME=your-domain.com
+
+# Optional: AWS S3 Configuration (if using AWS instead of MinIO)
+# AWS_ACCESS_KEY_ID=your_aws_access_key
+# AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+# AWS_REGION=us-east-1
 
 # Application Configuration
 TEMP_DIR=./temp
 LOG_LEVEL=INFO
+
+# YouTube API Configuration
+YOUTUBE_CLIENT_SECRETS_FILE=client_secrets.json
+YOUTUBE_TOKEN_FILE=token.json
+
+# API Key for Video Merger API
+# Generate using: python generate_api_key.py
+API_KEY=your-generated-api-key-here
 ```
 
 7. Set up YouTube Data API v3 (for YouTube upload feature):
@@ -85,17 +146,22 @@ LOG_LEVEL=INFO
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `API_KEY` | API key for authentication | Required |
 | `MINIO_ENDPOINT` | MinIO server endpoint | `localhost:9000` |
 | `MINIO_ACCESS_KEY` | MinIO access key | `minioadmin` |
 | `MINIO_SECRET_KEY` | MinIO secret key | `minioadmin` |
 | `MINIO_SECURE` | Use HTTPS for MinIO | `false` |
 | `SOURCE_BUCKET` | Source bucket name | `source-videos` |
 | `TARGET_BUCKET` | Target bucket name | `merged-videos` |
+| `SUBDOMAIN` | Subdomain for domain configuration (optional) | - |
+| `DOMAIN_NAME` | Domain name for domain configuration (optional) | - |
 | `AWS_ACCESS_KEY_ID` | AWS access key (optional) | - |
 | `AWS_SECRET_ACCESS_KEY` | AWS secret key (optional) | - |
 | `AWS_REGION` | AWS region (optional) | `us-east-1` |
 | `TEMP_DIR` | Temporary files directory | `./temp` |
 | `LOG_LEVEL` | Logging level | `INFO` |
+| `YOUTUBE_CLIENT_SECRETS_FILE` | Path to YouTube OAuth credentials file | `client_secrets.json` |
+| `YOUTUBE_TOKEN_FILE` | Path to YouTube token storage file | `token.json` |
 
 ## Usage
 
@@ -187,6 +253,7 @@ Health check endpoint.
 ```bash
 curl -X POST "http://localhost:8000/merge-videos" \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key-here" \
   -d '{
     "video_urls": [
       "http://localhost:9000/source-videos/video1.mp4",
@@ -200,6 +267,7 @@ curl -X POST "http://localhost:8000/merge-videos" \
 ```bash
 curl -X POST "http://localhost:8000/upload/youtube" \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key-here" \
   -d '{
     "video_url": "http://localhost:9000/source-videos/my-video.mp4",
     "title": "My YouTube Video",
@@ -216,6 +284,10 @@ curl -X POST "http://localhost:8000/upload/youtube" \
 import requests
 
 url = "http://localhost:8000/merge-videos"
+headers = {
+    "Content-Type": "application/json",
+    "X-API-Key": "your-api-key-here"
+}
 payload = {
     "video_urls": [
         "http://localhost:9000/source-videos/video1.mp4",
@@ -224,7 +296,7 @@ payload = {
     "output_filename": "my_merged_video.mp4"
 }
 
-response = requests.post(url, json=payload)
+response = requests.post(url, json=payload, headers=headers)
 result = response.json()
 print(f"Merged video URL: {result['merged_video_url']}")
 ```
@@ -234,6 +306,10 @@ print(f"Merged video URL: {result['merged_video_url']}")
 import requests
 
 url = "http://localhost:8000/upload/youtube"
+headers = {
+    "Content-Type": "application/json",
+    "X-API-Key": "your-api-key-here"
+}
 payload = {
     "video_url": "http://localhost:9000/source-videos/my-video.mp4",
     "title": "My YouTube Video",
@@ -242,7 +318,7 @@ payload = {
     "privacyStatus": "unlisted"
 }
 
-response = requests.post(url, json=payload)
+response = requests.post(url, json=payload, headers=headers)
 result = response.json()
 if result['success']:
     print(f"YouTube URL: {result['video_url']}")
