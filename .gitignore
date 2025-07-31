@@ -82,7 +82,7 @@ htmlcov/
 dmypy.json
 
 # YouTube API credentials
-client_secrets.json
+client_secrets*.json
 token.json
 service_account_creds.json
 *.service-account.json

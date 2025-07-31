@@ -3,6 +3,7 @@ import logging
 import aiohttp
 import aiofiles
 import tempfile
+import json
 from typing import List, Dict, Any
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -49,20 +50,7 @@ class YouTubeUploader:
                     credentials = None
 
             if not credentials:
-                if not os.path.exists(self.credentials_file):
-                    raise FileNotFoundError(
-                        f"Client secrets file not found at {self.credentials_file}. "
-                        "Please download from Google Cloud Console."
-                    )
-
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    self.credentials_file, self.scopes
-                )
-
-                credentials = flow.run_local_server(
-                    port=0,
-                )
-                logger.info("Obtained new YouTube API credentials")
+                credentials = self._get_new_credentials()
 
             # Save credentials
             try:
@@ -73,6 +61,245 @@ class YouTubeUploader:
                 logger.warning(f"Failed to save credentials: {e}")
 
         return build(self.api_service_name, self.api_version, credentials=credentials)
+
+    def _get_new_credentials(self):
+        """Get new credentials using device flow for Docker/VPS compatibility."""
+        if not os.path.exists(self.credentials_file):
+            raise FileNotFoundError(
+                f"Client secrets file not found at {self.credentials_file}. "
+                "Please download from Google Cloud Console and ensure it's configured "
+                "as a Desktop Application (not Web Application)."
+            )
+
+        # Try device flow first (best for Docker/VPS)
+        # try:
+        #     return self._device_flow_auth()
+        # except Exception as e:
+        #     logger.warning(f"Device flow failed: {e}")
+
+        # Fallback to manual flow
+        try:
+            return self._manual_flow_auth()
+        except Exception as e:
+            logger.error(f"Manual flow also failed: {e}")
+            raise
+
+    def _device_flow_auth(self):
+        """Use device flow for authentication (best for Docker/VPS)."""
+        logger.info("🐳 Starting Device Flow Authentication for Docker/VPS")
+        logger.info("=" * 60)
+
+        # Create flow from client secrets
+
+        flow = InstalledAppFlow.from_client_secrets_file(
+            self.credentials_file, self.scopes
+        )
+
+        # Use device flow
+        try:
+            # This method handles the entire device flow
+            credentials = flow.run_local_server(
+                port=0,
+            )
+            logger.info("✅ Device flow authentication successful!")
+            return credentials
+
+        except Exception as e:
+            # If run_console fails, try manual device flow
+            logger.warning(f"run_console failed: {e}, trying manual device flow")
+            return self._manual_device_flow(flow)
+
+    def _manual_device_flow(self, flow):
+        """Manual implementation of device flow if run_console doesn't work."""
+        import urllib.parse
+        import urllib.request
+        import time
+
+        # Load client config
+        with open(self.credentials_file, "r") as f:
+            client_config = json.load(f)
+
+        client_id = client_config["installed"]["client_id"]
+
+        # Step 1: Get device code
+        device_code_url = "https://oauth2.googleapis.com/device/code"
+        device_data = {"client_id": client_id, "scope": " ".join(self.scopes)}
+
+        device_req = urllib.request.Request(
+            device_code_url,
+            data=urllib.parse.urlencode(device_data).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+        with urllib.request.urlopen(device_req) as response:
+            device_response = json.loads(response.read().decode())
+
+        # Display instructions
+        logger.info(f"""
+📋 AUTHENTICATION REQUIRED
+{"=" * 60}
+
+🌐 Open this URL in your browser:
+   {device_response["verification_url"]}
+
+🔑 Enter this code:
+   {device_response["user_code"]}
+
+⏳ Waiting for you to complete authentication...
+   (Timeout in {device_response.get("expires_in", 1800) // 60} minutes)
+
+""")
+
+        # Step 2: Poll for token
+        token_url = "https://oauth2.googleapis.com/token"
+        poll_data = {
+            "client_id": client_id,
+            "client_secret": client_config["installed"]["client_secret"],
+            "device_code": device_response["device_code"],
+            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+        }
+
+        interval = device_response.get("interval", 5)
+        expires_in = device_response.get("expires_in", 1800)
+        start_time = time.time()
+
+        while time.time() - start_time < expires_in:
+            time.sleep(interval)
+
+            poll_req = urllib.request.Request(
+                token_url,
+                data=urllib.parse.urlencode(poll_data).encode(),
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+
+            try:
+                with urllib.request.urlopen(poll_req) as response:
+                    token_response = json.loads(response.read().decode())
+
+                    # Create credentials object
+                    credentials = Credentials(
+                        token=token_response["access_token"],
+                        refresh_token=token_response.get("refresh_token"),
+                        token_uri="https://oauth2.googleapis.com/token",
+                        client_id=client_id,
+                        client_secret=client_config["installed"]["client_secret"],
+                        scopes=self.scopes,
+                    )
+
+                    logger.info("✅ Manual device flow authentication successful!")
+                    return credentials
+
+            except urllib.error.HTTPError as e:
+                try:
+                    error_response = json.loads(e.read().decode())
+                    error_code = error_response.get("error")
+
+                    if error_code == "authorization_pending":
+                        print(".", end="", flush=True)
+                        continue
+                    elif error_code == "slow_down":
+                        interval += 5
+                        continue
+                    elif error_code in ["expired_token", "access_denied"]:
+                        raise Exception(f"Authorization failed: {error_code}")
+                    else:
+                        raise Exception(f"Error: {error_response}")
+                except json.JSONDecodeError:
+                    raise Exception(f"HTTP Error: {e}")
+
+        raise Exception("Authentication timed out")
+
+    def _manual_flow_auth(self):
+        """Fallback manual flow for environments where device flow isn't available."""
+        logger.info("🔧 Starting Manual Flow Authentication")
+        logger.info("=" * 50)
+
+        flow = InstalledAppFlow.from_client_secrets_file(
+            self.credentials_file, self.scopes
+        )
+        flow.redirect_uri = "http://localhost:8000/"
+
+        # Generate auth URL
+        auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline")
+
+        logger.info(f"""
+📋 MANUAL AUTHENTICATION REQUIRED
+{"=" * 60}
+
+🌐 Copy and paste this URL into your browser:
+
+{auth_url}
+
+📝 After logging in, Google will redirect you to a URL that starts with
+   'http://localhost'. Copy the ENTIRE URL and paste it below.
+   
+   Example: http://localhost:8080/?code=4/ABCD...&scope=...
+
+""")
+
+        # Get the full redirect URL from user
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                redirect_url = input(
+                    f"🔗 Paste the full redirect URL (attempt {attempt + 1}/{max_attempts}): "
+                ).strip()
+
+                if not redirect_url:
+                    logger.warning("No URL entered. Please try again.")
+                    continue
+
+                # Extract code from URL
+                if "code=" not in redirect_url:
+                    logger.warning(
+                        "No authorization code found in URL. Please ensure you copied the complete URL."
+                    )
+                    continue
+
+                # Parse the code from URL
+                from urllib.parse import urlparse, parse_qs
+
+                parsed_url = urlparse(redirect_url)
+                query_params = parse_qs(parsed_url.query)
+
+                if "code" not in query_params:
+                    logger.warning("No authorization code found in URL parameters.")
+                    continue
+
+                auth_code = query_params["code"][0]
+
+                # Exchange code for token
+                flow.fetch_token(code=auth_code)
+                credentials = flow.credentials
+
+                logger.info("✅ Manual flow authentication successful!")
+                return credentials
+
+            except KeyboardInterrupt:
+                logger.info("Authentication cancelled by user")
+                return None
+            except Exception as e:
+                logger.warning(f"Attempt {attempt + 1} failed: {e}")
+                if attempt == max_attempts - 1:
+                    raise
+
+        raise Exception("Maximum authentication attempts reached")
+
+    def _is_running_in_docker(self):
+        """Check if running inside Docker container."""
+        return (
+            os.path.exists("/.dockerenv")
+            or os.environ.get("DOCKER_CONTAINER") == "true"
+        )
+
+    def _is_interactive(self):
+        """Check if running in interactive mode."""
+        try:
+            import sys
+
+            return sys.stdin.isatty()
+        except:
+            return False
 
     async def download_video(self, video_url: str, output_path: str) -> str:
         """
