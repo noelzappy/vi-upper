@@ -26,9 +26,6 @@ class YouTubeUploader:
         self.api_service_name = "youtube"
         self.api_version = "v3"
 
-        # For testing purposes, check if running in Docker or interactive mode
-        self._get_authenticated_service()
-
     def _get_authenticated_service(self):
         """Get authenticated YouTube API service."""
         credentials = None
@@ -574,4 +571,22 @@ class YouTubeUploader:
             return {"success": False, "error": str(e)}
 
 
-dd = YouTubeUploader()
+async def main():
+    """Main function to test YouTube uploader."""
+    dd = YouTubeUploader()
+    dd.upload_video_from_url(
+        video_url="https://fsn1.your-objectstorage.com/misc/merged_video_d581a44b_1753913124.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=XSTF27Q6NI5GXKCERN82%2F20250730%2Ffsn1-prod1%2Fs3%2Faws4_request&X-Amz-Date=20250730T220529Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=d320a2a8d794040dd8b8195f43fb037d28cffa6ac713bfde5376070715457d53",
+        title="Test Video Upload",
+        description="This is a test video upload from URL",
+        tags=["test", "video", "upload"],
+        category_id="22",
+        privacy_status="public",
+    )
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(main())
+    print("🧪 Video Merger API - Authentication Tests")
