@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 from video_merger import VideoMerger
 from s3_client import S3Client
-# from youtube_uploader import YouTubeUploader
+from youtube_uploader import YouTubeUploader
 
 # Load environment variables
 load_dotenv()
@@ -114,7 +114,7 @@ class YouTubeUploadResponse(BaseModel):
 # Initialize clients
 s3_client = S3Client()
 video_merger = VideoMerger()
-# youtube_uploader = YouTubeUploader()
+youtube_uploader = YouTubeUploader()
 
 
 @app.get("/")
