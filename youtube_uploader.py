@@ -26,6 +26,9 @@ class YouTubeUploader:
         self.api_service_name = "youtube"
         self.api_version = "v3"
 
+        # For testing purposes, check if running in Docker or interactive mode
+        self._get_authenticated_service()
+
     def _get_authenticated_service(self):
         """Get authenticated YouTube API service."""
         credentials = None
@@ -569,3 +572,6 @@ class YouTubeUploader:
         except Exception as e:
             logger.error(f"Failed to get video info: {e}")
             return {"success": False, "error": str(e)}
+
+
+dd = YouTubeUploader()
